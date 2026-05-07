@@ -1,4 +1,7 @@
 
+from pathlib import Path
+from xml.sax.saxutils import escape
+
 import arabic_reshaper
 from bidi.algorithm import get_display
 from reportlab.lib.pagesizes import A4
@@ -8,16 +11,53 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable, PageBreak
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.lib.enums import TA_RIGHT, TA_CENTER, TA_LEFT
+from reportlab.lib.enums import TA_RIGHT, TA_CENTER
 
-# Register Arabic fonts
-pdfmetrics.registerFont(TTFont('NotoArabic', '/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf'))
-pdfmetrics.registerFont(TTFont('NotoArabicBold', '/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf'))
+DEFAULT_OUTPUT_PATH = Path('outputs/podcast_men_el_makena_lel_headphone.pdf')
+
+FONT_CANDIDATES = {
+    'NotoArabic': [
+        '/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf',
+        '/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf',
+        '/usr/local/share/fonts/NotoSansArabic-Regular.ttf',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+    ],
+    'NotoArabicBold': [
+        '/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf',
+        '/usr/share/fonts/truetype/noto/NotoNaskhArabic-Bold.ttf',
+        '/usr/local/share/fonts/NotoSansArabic-Bold.ttf',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+    ],
+}
+
+
+def first_existing_font(paths):
+    """Return the first usable font path from a list of candidates."""
+    for path in paths:
+        font_path = Path(path)
+        if font_path.is_file():
+            return font_path
+    raise FileNotFoundError(
+        'No Arabic-capable TrueType font was found. Install Noto Sans Arabic '
+        'or DejaVu Sans, then rerun this script.'
+    )
+
+
+def register_fonts():
+    """Register Arabic-capable regular and bold fonts for ReportLab."""
+    for font_name, candidates in FONT_CANDIDATES.items():
+        pdfmetrics.registerFont(
+            TTFont(font_name, str(first_existing_font(candidates)))
+        )
+
 
 def ar(text):
-    """Reshape and reorder Arabic text for correct PDF rendering."""
-    reshaped = arabic_reshaper.reshape(text)
-    return get_display(reshaped)
+    """Reshape, reorder, and XML-escape Arabic text for ReportLab Paragraphs."""
+    reshaped = arabic_reshaper.reshape(str(text))
+    return escape(get_display(reshaped))
+
+
+register_fonts()
 
 # ─────────────────────────────────────────────
 # STYLES
@@ -446,12 +486,13 @@ def build_story(styles):
 # MAIN
 # ─────────────────────────────────────────────
 def main():
-    output_path = '/mnt/user-data/outputs/podcast_men_el_makena_lel_headphone.pdf'
+    output_path = DEFAULT_OUTPUT_PATH
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     styles = make_styles()
     story = build_story(styles)
 
     doc = SimpleDocTemplate(
-        output_path,
+        str(output_path),
         pagesize=A4,
         rightMargin=18*mm,
         leftMargin=18*mm,
